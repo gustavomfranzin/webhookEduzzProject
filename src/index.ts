@@ -1,79 +1,57 @@
-import express from "express";
-import bodyParser from "body-parser";
+import { eventsToCompare } from "./eventsToCompare";
+import express, { Request, Response } from "express";
+
 
 const app = express();
 
-const msg = "Hello world";
-const msg2 = "Error";
+app.use(express.urlencoded({ extended: true }));
 
-const nodemailer = require("nodemailer");
+const eventsReceived: any[] = [];
 
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: "exemplo@gmail.com",
-    pass: "exemplo",
-  },
-});
+const lastEvent = eventsToCompare[eventsToCompare.length - 1];
+const invoices = eventsToCompare.map(event => event.id);
 
-app.use(express.urlencoded());
-
-app.post("/hook", (req: Request, res: Response, next: NextFunction) => {
+app.post("/hook", (req: Request, res: Response) => {
   const {
-    origin,
-    api_key,
-    trans_paymentmethod,
+    trans_cod,
     trans_status,
-    cus_email,
-    cus_name,
-    cus_cel,
-    product_name,
   } = req.body;
 
-  if (
-    (trans_status === "3" && origin === "api-key-orbita") ||
-    api_key === "testWebhook"
-  ) {
-    const mailOptions = {
-      from: '"Nome da Empresa" exemplo@gmail.com',
-      to: cus_email, 
-      subject: "Assunto para o e-mail + nome do produto - " + product_name,
-      text: "Mensagem + nome do produto " + product_name,
-    };
-    transporter.sendMail(mailOptions, function (error: any, info: any) {
-      if (error) {
-        console.log(error);
-      } else {
-        console.log("Email sent: " + info.response);
-      }
-    });
-    console.log(req.body); // Call your action on the request here
-    res.status(200).end(msg); // Responding is important
-  } else {
-    if (
-      (trans_status === "1" && origin === "api-key-orbita") ||
-      api_key === "testWebhook"
-    ) {
-      const mailOptions = {
-        from: '"NuSolutions a solução na palma da mão" exemplo@gmail.com',
-        to: cus_email, 
-        subject: "Assunto para o e-mail + nome do produto - " + product_name,
-        text: "Mensagem + nome do produto " + product_name,
-      };
-      transporter.sendMail(mailOptions, function (error: any, info: any) {
-        if (error) {
-          console.log(error);
-        } else {
-          console.log("Email sent2: " + info.response);
-        }
-      });
-      console.log(req.body); // Call your action on the request here
-      res.status(200).end(msg); // Responding is important
-    } else {
-      console.log(req.body); // Call your action on the request here
-      res.status(400).end(msg2);
-    }
+  if (!invoices.includes(trans_cod)) {
+    res.sendStatus(200);
+    
+    return;
   }
+
+  eventsReceived.push({ id: trans_cod, status: trans_status });
+
+  res.sendStatus(200);
+
+  const isTheLastEvent = trans_cod == lastEvent.id && trans_status == lastEvent.status;
+
+  if (!isTheLastEvent) {
+    return;
+  }
+
+  if (isTheLastEvent) {
+    const wrongEvents = eventsReceived.map((value, index) => {
+      const isOk = value.id == eventsToCompare[index].id && value.status == eventsToCompare[index].status;
+
+      return !isOk;
+    });
+
+    console.log(`${wrongEvents.length} eventos foram recebidos fora de ordem`);
+  }
+
 });
+
+setInterval(() => {
+  console.log('Eventos recebidos:');
+  console.log('\n\n\n');
+  for (const iterator of eventsReceived) {
+    console.log(`id: ${iterator.id}, status: ${iterator.status}`);
+  }
+  console.log('\n\n\n');
+}, 5000);
 
 app.listen(5000, () => console.log("express listening at port 5000!"));
